@@ -1,0 +1,165 @@
+---
+title: "Econometrics_PS2_Panel"
+author: "Raphael Kroes"
+date: "2024-11-13"
+output: html_document
+---
+***Question ML.1***
+(a) Without further proof, we assume $E(x_i) = var(x_i) = \theta$
+$f(x_1, ..., x_n | \theta) = \prod_{i = 1}^{n} \exp{(-\theta)} \frac^{\theta^x_i}_{x_i!} $
+$\log{f(x_1, ..., x_n | \theta)} = \sum^{n}_{i = 1} \log{\left[ \exp{(-\theta)} \frac^{\theta^x_i}_{x_i!} \right]} $
+$= \sum^{n}_{i = 1} -\theta +x_i \log{\theta} - \log{x_i!} $
+$= -n\theta +\log{\theta} \cdot \sum_{i = 1}^{n} x_i - \sum_{i = 1}^{n} \log{(x_i!)}$
+$\hat{\theta}_{ML} = \max_{\hat{\theta}} -n\theta +\log{\theta} \cdot \sum_{i = 1}^{n} x_i - \sum_{i = 1}^{n} \log{(x_i!)}$
+Note that
+$\frac^{\partial \log{f(x_1, ..., x_n | \theta)}}_{\partial \theta} = - n + \frac^{1}_{\theta} \sum_{i = 1}^{n} x_i$
+By the first order conditions, 
+$0 =: - n + \frac^{1}_{\hat{\theta}} \sum_{i = 1}^{n} x_i$
+$\Rightarrow \hat{\theta}_{ML} = \frac^{1}_{n} \sum_{i = 1}^{n} x_i$
+(b)(1) $\mathcal{I}_\theta = var(\frac^{\partial \log{f(x_1, ..., x_n | \theta)}}_{\partial \theta}) = var(- n + \frac^{1}_{\theta} \sum_{i = 1}^{n} x_i)$
+By the i.i.d. assumption, $var(\sum_{i = 1}^{n} x_i) = n \cdot \theta$
+$\Rightarrow \mathcal{I}_\theta = \frac^{1}_{\theta^2} \cdot \left( n \cdot \theta \right)$
+(2) $\frac^{\partial^2 \log{f(x_1, ..., x_n | \theta)}}_{\partial \theta^2} = - \frac^{1}_{\theta^2} \sum_{i = 1}^{n}$
+$\mathcal{I}_\theta = - E \left( \frac^{\partial^2 \log{f(x_1, ..., x_n | \theta)}}_{\partial \theta^2} \right) = \frac^{1}_{\theta^2} \cdot n \cdot \theta = \frac^{n}_{\theta}$
+(c) $E \left(\hat{\theta}_{ML} \right) = E\left( \sum_{i = 1}^{n} x_i \right)$
+$= \frac^{1}_{n} \cdot n \cdot \theta = \theta$
+In the following, I will show that the ML estimator for the \theta parameter of the Poisson distribution reaches the Cramér-Rao lower bound. The regularity conditions are met:
+(i) The Fisher information always exists, as $\theta > 0$ by assumption.
+(ii) The operations of integration with respect to $x$ and differentiation with respect to \theta can be interchanged in the expectation of $\hat{\theta}_{ML}$. This follows from the fact that the support of $x$ does not depend on $\theta$ (further proof omitted).
+We see that
+$var(\hat{\theta}_{ML}) = var(\frac^{1}_{n} \sum_{i = 1}^{n} x_i)$
+$=\frac^{1}_{n^2} \cdot \left( n \cdot \theta \right) = \frac^{\theta}_{n}$
+and that
+$(n \cdot \mathcal{I}_\theta |_{n=1})^{-1} = \left( n \cdot \frac^{1}_{\theta} \right)^{-1} = \frac^{theta}_{n}
+Thus,
+$var(\hat{\theta}_{ML}) = (n \cdot \mathcal{I}_\theta |_{n=1})^{-1}$
+The Cramér-Rao bound holds with equality, making the ML estimator, the mean, an efficient estimator.
+
+***Question P.1***
+(a) 'Since only three time points are available, it doesn’t matter whether the impact is estimated with a fixed effects panel regression or a cross-section regression using only data from one of the years. The estimates will always be close.'
+This is false - the estimates will not always be close. For internal validity of inference using a cross-sectional design, we must assume that it makes no difference at which point in time the data is collected; that is, we assume cigarette sales are independent of the time. One might argue, that the point in time indeed does not affect sales; however, the point in time likely affects sales through mitigating variables (e.g. a supply- or demand shock). Thus it makes a major difference whether fixed effects are considered or not.
+(b) 'If the model is estimated using a cross-section regression with one year of data, omitted variable bias may occur due to unobserved heterogeneity across countries.'
+This is true, as OVB may occur in any statistical analysis, including panel regression. Panel regression holds some safeguards against OVB, but it cannot guarantee to fully mitigate it under any regular circumstances.
+(c) 'If a panel data model with individual fixed effects is used to estimate the impact coefficient, no omitted variable bias will be present.'
+This is false. Omitted variable bias may occur in any statistical setup*. However, the individual fixed effects would account for level effects: If, for example, one country had a generally high consumption, and another one had a generally low consumption, individual fixed effects would help to consider the changes relative to the country's baseline.
+*In some it is more problematic than in others - a randomised controlled trial will usually suffer of omitted variables and thus OVB. However, by assuming i.i.d. draws and assignment into treatment groups, this becomes less problematic as we may assume the bias is expected to be 0 (under some conditions).
+(d) 'The number of parameters that need to be estimated automatically increases if an additional year of data becomes available.'
+The number of parameters depends on the model. If the model contains effects for the point in time ('random effects'), the number of estimated parameters would increase. If the model does not contain parameters that are dependent on time, the number of parameters would not increase.
+
+**Question P.2**
+
+multiverse modelling choices:
+-Year as factor (dummy) or continuous variable
+-Investment (I) and market value/ assets (Q) not transformed or log-transformed
+-Number of lags for market value/ assets (Q), cash flow/ assets (CFA), and long-term debt (D)
+
+modelling technique:
+elastic net regression minimising out-of-sample mean squared forecast error 
+```{r}
+library(dplyr)
+library(multiverse)
+library(glmnet)
+investments<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/Investments.csv")|>
+  as_tibble()|>
+  mutate(ID = as.factor(ID), T = as.factor(T), SIC = as.factor(SIC))
+
+mvAnalysis<- multiverse()
+
+```
+
+```{r}
+# Load necessary packages
+library(dplyr)
+library(Matrix)
+library(multiverse)
+library(glmnet)
+
+investments <- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/Investments.csv") |>
+  as_tibble()|>
+  mutate(ID = as.factor(ID), T = as.factor(T), SIC = as.factor(SIC))|>
+  arrange(ID, year)
+
+mv <- multiverse()
+
+nonfactors_matrix<- investments|>
+  mutate(ID = NULL, T = NULL, SIC = NULL)|>
+  as("sparseMatrix")
+ID_matrix<- sparse.model.matrix(~.-1 + ID, data = investments)
+T_matrix<- sparse.model.matrix(~.-1 + T, data = investments)
+SIC_matrix<- sparse.model.matrix(~.-1 + SIC, data = investments)
+hot_encoded_matrix<- cbind(nonfactors_matrix, ID_matrix, T_matrix, SIC_matrix)
+
+
+# Add branches for year as factor or continuous
+inside(mv, {
+  year_factor <- investments |>
+    mutate(year = as.factor(year))
+  year_continuous <- investments |>
+    mutate(year = as.numeric(year))
+})
+
+# Add branches for transformations of I and Q
+inside(mv, {
+  I_not_transformed <- investments$I
+  I_log_transformed <- log(investments$I)
+})
+inside(mv, {
+  Q_not_transformed <- investments$Q
+  Q_log_transformed <- log(investments$Q)
+})
+
+# Add branches for number of lags (1 to 3) for Q, CF, and D
+# inside(mv, { 
+#   for (lag in 1:3){
+#     investments <- investments |> 
+#       mutate(!!paste0("Q_lag", lag) := dplyr::lag(Q, lag), 
+#              !!paste0("CFA_lag", lag) := dplyr::lag(CFA, lag), 
+#              !!paste0("D_lag", lag) := dplyr::lag(D, lag)) 
+#   } 
+# })
+
+inside(mv, {
+  investments<- investments|>
+    arrange(ID, year)|>
+    mutate("Q_lag1" := dplyr::lag(Q, 1),
+           "Q_lag2" := dplyr::lag(Q, 2),
+           "Q_lag3" := dplyr::lag(Q, 3),
+           "CFA_lag1" := dplyr::lag(CFA, 1),
+           "CFA_lag2" := dplyr::lag(CFA, 2),
+           "CFA_lag3" := dplyr::lag(CFA, 3),
+           "D_lag1" := dplyr::lag(D, 1),
+           "D_lag2" := dplyr::lag(D, 2),
+           "D_lag3" := dplyr::lag(D, 3))
+  r_selector<- which(investments$ID[-1] != investments$ID[-nrow(investments)])
+  c_selector<- grepl("Q_lag", colnames(investments)) |
+    grepl("CFA_lag", colnames(investments)) |
+    grepl("D_lag", colnames(investments))
+  investments[1 + r_selector, c_selector] <- NA
+})
+# Fit the multiverse models using glmnet
+inside(mv, {
+  y_vec <- investments$I
+  x_mat <- investments |>
+    select(-I)
+#    select(-I, -ID, -SIC) |>
+    as.matrix()
+  
+  fit <- glmnet(x = x_mat, y = y_vec, family = "gaussian", alpha = 0.1)
+  
+})
+
+# Execute the multiverse 
+results <- execute_multiverse(mv) # Return the model with the lowest out-of-sample mean squared forecast error 
+best_model <- results %>% filter(mean_squared_error == min(mean_squared_error)) best_model
+```
+
+```{r}
+x_mat<- investments[,-3]|>
+  data.matrix()
+cv.glmnet(x_mat, investments$I, family = "gaussian", 
+       alpha = 0.1)
+# change factor variables to hot encoding
+# get cv routine running
+```
+
+
