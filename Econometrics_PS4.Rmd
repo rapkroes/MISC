@@ -15,6 +15,7 @@ if(isTRUE(API_call)){
 }
 library(tidyverse)
 library(lme4)
+library(bacondecomp)
 ```
 The following code contains the API call. Run it at your own peril - it will take some time. 
 ```{r}
@@ -22,7 +23,7 @@ if(isTRUE(API_call)){
   #curate bank data
   data_list<- list()
   pb<- txtProgressBar(min = 1, max = 200, )
-  for(i in seq(165, 200)){
+  for(i in seq(1, 165)){
     offset_i<- format((i - 1) * 10000, scientific = FALSE)
     url_i<- url(description  = paste0("http://banks.data.fdic.gov/api/financials?fields=CERT,STALP,STCNTY,STNAME,ROA,REPDTE&limit=1000&offset=", offset_i))
     im<- fromJSON(url_i)
@@ -139,7 +140,6 @@ branching_index_up<- branching_index_data|>
   mutate(first_dereg = replace(first_dereg, 1, 1))|>
   ungroup()
 
-
 state_year_list<- list()
 current_status<- tibble(
   STNAME = state_vector,
@@ -174,9 +174,9 @@ joint_data_2<- left_join(joint_data_1, state_year_tibble, by = c("STNAME", "YEAR
   # g
   dplyr::filter(YEAR >= 1990 & YEAR <= 2005)|>
   # h
-  group_by(CERT)|>
-  dplyr::filter(all(seq(1990, 2005) %in% YEAR))|>
-  ungroup()|>
+  # group_by(CERT, YEAR)|>
+  # dplyr::filter(n() == 4)|>
+  # ungroup()|>
   # i
   group_by(CERT)|>
   dplyr::filter(all(STALP == STALP[1]))|>
@@ -231,18 +231,20 @@ lm_data<- joint_data_2|>
   mutate(STNAME = as.factor(STNAME))|>
   mutate(QUARTER = as.factor(QUARTER))
 
-DID_1<- lmer(ROA ~ first_dereg + (1 | YEAR) + (1 | QUARTER) + (1 | STNAME) + (1 | CERT), data = lm_data)
+DID_1<- lmer(ROA ~ first_dereg + (1 | YEAR)  + (1 | STNAME) + (1 | CERT), data = lm_data)
 
 summary(DID_1)
 ```
 3
-Note that I include STNAME and QUARTER in the regression. STNAME is to account for local state effects, QUARTER for quarterly effects (since the data is raised quarterly). I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster, even though it is theoretically possible.
-
+Note that I include STNAME in the regression. STNAME is to account for local state effects, QUARTER for quarterly effects (since the data is raised quarterly). I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster a defensible choice, even though it is theoretically possible.
+The DID coefficient is given as approximately 0.005 with a standard deviation of 0.03. That is to say, assuming the model is approximately correctly specified, we expect the deregulation of the branching of banks to increase return over assets on average by 0.5%; if the model is approximately correctly specified, we expect the true effect to lie with a probability of 95% between -0.06 and 0.07. Considering the 25% quantile of ROA is 0.72 and the 75% quantile is 1.38, the effect of deregulation has in this case only very small effects on the ROA.
 
 4
-The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
+The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every US state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
 ```{r}
 # 5
+
+DID_2<- bacon(ROA ~ first_dereg  + STNAME, data = lm_data, id_var = "CERT", time_var = "YEAR")
 
 
 ```
