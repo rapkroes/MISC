@@ -22,7 +22,7 @@ if(isTRUE(API_call)){
   #curate bank data
   data_list<- list()
   pb<- txtProgressBar(min = 1, max = 200, )
-  for(i in seq(1, 200)){
+  for(i in seq(165, 200)){
     offset_i<- format((i - 1) * 10000, scientific = FALSE)
     url_i<- url(description  = paste0("http://banks.data.fdic.gov/api/financials?fields=CERT,STALP,STCNTY,STNAME,ROA,REPDTE&limit=1000&offset=", offset_i))
     im<- fromJSON(url_i)
@@ -36,17 +36,16 @@ I conducted minor data preparation on the county adjacency data using MS Notepad
 ```{r}
 adjacency_data<- read.csv("https://raw.githubusercontent.com/rapkroes/MISC/refs/heads/main/county_adjacency2024.csv", sep = ";")
 branching_index_data<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/johnson_rice_branching_index.csv")
-if(isFALSE(API_call)){
-  
+if(isTRUE(API_call)){
+  bank_data<- bind_rows(data_list)
+}else{
+  bank_data<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/raw_bank_data.csv")
 }
 ```
 
 
 ```{r}
 # 1
-if(isTRUE(API_call)){
-  bank_data<- bind_rows(data_list)
-}
 bank_data<- bank_data|> 
   #a
   mutate(REPDTE = as.numeric(REPDTE))|>
@@ -237,8 +236,14 @@ DID_1<- lmer(ROA ~ first_dereg + (1 | YEAR) + (1 | QUARTER) + (1 | STNAME) + (1 
 summary(DID_1)
 ```
 3
-Note that I include STNAME and QUARTER in the regression. STNAME is to account for local state effects, QUARTER for quarterly effects (since the data is raised quarterly). I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling.
+Note that I include STNAME and QUARTER in the regression. STNAME is to account for local state effects, QUARTER for quarterly effects (since the data is raised quarterly). I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster, even though it is theoretically possible.
 
 
 4
 The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
+```{r}
+# 5
+
+
+```
+
