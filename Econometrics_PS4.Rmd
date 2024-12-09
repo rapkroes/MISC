@@ -5,27 +5,240 @@ date: "2024-12-04"
 output: html_document
 ---
 
+The 'jsonlite' library is required only if the API call is executed. I advise against it, as it has very long run time.
 ```{r}
-library(jsonlite)
-library(tictoc)
-library(dplyr)
-
-```
-
-```{r}
-#curate bank data
-data_list<- list()
-for(i in seq(1, 200)){
-  offset_i<- format((i - 1) * 10000, scientific = FALSE)
-  url_i<- url(description  = paste0("http://banks.data.fdic.gov/api/financials?fields=CERT,STALP,STCNTY,STNAME,ROA,REPDTE&limit=10000&offset=", offset_i))
-  im<- fromJSON(url_i)
-  data_list[[i]]<- im$data$data
+## the 'conflicted' library from GitHub is recommended, but not mandatory
+library(conflicted)
+API_call<- TRUE
+if(isTRUE(API_call)){
+  library(jsonlite)
 }
-bank_data<- bind_rows(data_list)
-         
+library(tidyverse)
+library(lme4)
 ```
+The following code contains the API call. Run it at your own peril - it will take some time. 
+```{r}
+if(isTRUE(API_call)){
+  #curate bank data
+  data_list<- list()
+  pb<- txtProgressBar(min = 1, max = 200, )
+  for(i in seq(1, 200)){
+    offset_i<- format((i - 1) * 10000, scientific = FALSE)
+    url_i<- url(description  = paste0("http://banks.data.fdic.gov/api/financials?fields=CERT,STALP,STCNTY,STNAME,ROA,REPDTE&limit=1000&offset=", offset_i))
+    im<- fromJSON(url_i)
+    data_list[[i]]<- im$data$data
+    setTxtProgressBar(pb, i)
+  }
+  close(pb)
+}
+```
+I conducted minor data preparation on the county adjacency data using MS Notepad. I separated the county and states into individual columns and renamed the columns. For convenience, I uploaded the adjacency data and the branching index data to a GitHub file. 
+```{r}
+adjacency_data<- read.csv("https://raw.githubusercontent.com/rapkroes/MISC/refs/heads/main/county_adjacency2024.csv", sep = ";")
+branching_index_data<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/johnson_rice_branching_index.csv")
+if(isFALSE(API_call)){
+  
+}
+```
+
 
 ```{r}
+# 1
+if(isTRUE(API_call)){
+  bank_data<- bind_rows(data_list)
+}
+bank_data<- bank_data|> 
+  #a
+  mutate(REPDTE = as.numeric(REPDTE))|>
+  mutate(YEAR = as.numeric(substr(REPDTE, 1, 4)))|>
+  mutate(MONTH = as.numeric(substr(REPDTE, 5, 6)))|>
+  mutate(DAY = as.numeric(substr(REPDTE, 7, 8)))|>
+  mutate(QUARTER = ceiling(MONTH / 4))|>
+  #b
+  dplyr::filter(STCNTY != "null" & STNAME != "" & STALP != "")|>
+  #c
+  mutate(STNAME = if_else(STNAME == "DISTRICT OF COLUMBIA", "DC", STNAME))|>
+  #d 
+  mutate(location = paste(STALP, str_to_lower(STCNTY), sep = "_"))|>
+  mutate(location = str_remove_all(location, " "))|>
+  mutate(location = str_remove_all(location, "\\."))|>
+  mutate(location = if_else(location == "MO_saintlouis(city)", 
+                            "MO_stlouis",
+                            location))|>
+  arrange(location)
+```
+The following code leads to perfect matching between the bank data and the adjacency data.
+```{r}
+# 1e
+adj_addage<- adjacency_data|>
+  mutate(bordercounty = as.numeric(state_1 != state_2))|>
+  mutate(county = str_to_lower(county_1))|>
+  mutate(county = sub(" city and borough", "", county))|>
+  mutate(county = sub(" county", "", county))|>
+  mutate(county = sub(" parish", "", county))|>
+  mutate(county = sub(" borough", "", county))|>
+  mutate(county = sub(" census area", "", county))|>
+  mutate(county = sub(" municipality", "", county))|>
+  mutate(county = sub(" district", "", county))|>
+  mutate(county = sub(" island", "", county))|>
+  mutate(state = str_squish(state_1))|>
+  mutate(location = paste(state, county, sep = "_"))|>
+  select(county, bordercounty, location)|>
+  distinct()|>
+  # the following counties do not appear in the adjacency data and were manually added using Google Maps.
+  add_row(county = "fairfield", bordercounty = 0, location = "CT_fairfield")|>
+  add_row(county = "hartford", bordercounty = 0, location = "CT_hartford")|>
+  add_row(county = "litchfield", bordercounty = 0, location = "CT_litchfield")|>
+  add_row(county = "middlesex", bordercounty = 0, location = "CT_middlesex")|>
+  add_row(county = "new haven", bordercounty = 0, location = "CT_new haven")|>
+  add_row(county = "new london", bordercounty = 0, location = "CT_new london")|>
+  add_row(county = "tolland", bordercounty = 0, location = "CT_tolland")|>
+  add_row(county = "windham", bordercounty = 0, location = "CT_windham")|>
+  add_row(county = "kosrae", bordercounty = 0, location = "FM_kosrae")|>
+  add_row(county = "pohnpei", bordercounty = 0, location = "FM_pohnpei")|>
+  add_row(county = "arecibo", bordercounty = 0, location = "PR_arecibo")|>
+  add_row(county = "bayamon", bordercounty = 0, location = "PR_bayamon")|>
+  add_row(county = "caguas", bordercounty = 0, location = "PR_caguas")|>
+  add_row(county = "carolina", bordercounty = 0, location = "PR_carolina")|>
+  add_row(county = "guaynabo", bordercounty = 0, location = "PR_guaynabo")|>
+  add_row(county = "humacao", bordercounty = 0, location = "PR_humacao")|>
+  add_row(county = "mayaguez", bordercounty = 0, location = "PR_mayaguez")|>
+  add_row(county = "ponce", bordercounty = 0, location = "PR_ponce")|>
+  add_row(county = "sanjuan", bordercounty = 0, location = "PR_sanjuan")|>
+  # removal of special characters
+  mutate(location = str_remove_all(location, " "))|>
+  mutate(location = str_remove_all(location, "\\."))|>
+  mutate(location = if_else(location == "NM_doñaana", "NM_donaana", location))|>
+  # mediate other differences in notation
+  mutate(
+    location = if_else(location == "VA_bristolcity", "VA_bristol", location)
+  )|>
+  mutate(location = if_else(location == "VA_salemcity", "VA_salem", location))|>
+  mutate(location = if_else(location == "IL_rock", "IL_rockisland", location))|>
+  dplyr::filter(bordercounty == 1)|>
+  arrange(location)
+
+joint_data_1<- left_join(bank_data, adj_addage, by = "location")|>
+  dplyr::filter(bordercounty == 1)|>
+  select(- bordercounty, - county)
 
 ```
+```{r}
+# 1f and 2 (jointly)
+state_vector<- unique(joint_data_1$STNAME)
+year_vector<- seq(1990, 2005)
 
+branching_index_up<- branching_index_data|>
+  mutate(YEAR = as.numeric(substr(Effective.Date, 1, 4)))|>
+  mutate(branching_index_new = 4 - Branching.Restrictivness.Index)|>
+  mutate(STNAME = str_to_upper(State))|>
+  dplyr::filter(STNAME %in% state_vector)|>
+  select(STNAME, YEAR, branching_index_new)|>
+  group_by(STNAME)|>
+  arrange(STNAME, YEAR)|>
+  mutate(first_dereg = 0)|>
+  mutate(first_dereg = replace(first_dereg, 1, 1))|>
+  ungroup()
+
+
+state_year_list<- list()
+current_status<- tibble(
+  STNAME = state_vector,
+  branching_index_new = numeric(length(state_vector)),
+  YEAR = numeric(length(state_vector)),
+  deregulated = numeric(length(state_vector)),
+  first_dereg = numeric(length(state_vector))
+)
+for(i in seq_along(year_vector)){
+  im<- branching_index_up|>
+    dplyr::filter(YEAR == year_vector[i])
+  current_status<- current_status|>
+    mutate(first_dereg = 0)
+  if(nrow(im) > 0){
+    index<- which(state_vector %in% im$STNAME)
+    current_status<- current_status|>
+      mutate(branching_index_new = 
+               replace(branching_index_new, index, im$branching_index_new)
+             )|>
+      mutate(deregulated = replace(deregulated, index, 1))|>
+      mutate(first_dereg = replace(first_dereg, index, im$first_dereg))
+  }
+  current_status<- current_status|>
+    mutate(YEAR = year_vector[i])
+  state_year_list[[i]]<- current_status
+}
+state_year_tibble<- state_year_list|>
+  bind_rows()|>
+  arrange(STNAME)
+
+joint_data_2<- left_join(joint_data_1, state_year_tibble, by = c("STNAME", "YEAR"))|>
+  # g
+  dplyr::filter(YEAR >= 1990 & YEAR <= 2005)|>
+  # h
+  group_by(CERT)|>
+  dplyr::filter(all(seq(1990, 2005) %in% YEAR))|>
+  ungroup()|>
+  # i
+  group_by(CERT)|>
+  dplyr::filter(all(STALP == STALP[1]))|>
+  ungroup()
+
+print(list(nobs_year = table(joint_data_2$YEAR), 
+           no_banks = length(unique(joint_data_2$CERT)), 
+           no_counties = length(unique(joint_data_2$STCNTY))
+           ))
+
+
+```
+```{r}
+dereg_waves<- joint_data_2|>
+  select(CERT, YEAR, first_dereg)|>
+  dplyr::filter(first_dereg == 1)|>
+  distinct()|>
+  group_by(YEAR)|>
+  summarise(no_banks = n())
+
+dereg_plot<- ggplot(dereg_waves, aes(x = YEAR, y = no_banks)) +
+  geom_bar(stat = "identity") +
+  scale_x_continuous(breaks = seq(1990, 2005, by = 2), limits = c(1990, 2005)) +
+  theme_light() +
+  labs(title = "Number of Banks That Become Deregulated, 1990-2005") +
+  xlab("year") +
+  ylab("number of affected banks")
+dereg_plot
+
+dereg_by_year<- joint_data_2|>
+  select(CERT, YEAR, deregulated)|>
+  group_by(YEAR)|>
+  summarise(proportion = mean(deregulated))
+
+dereged_prop_plot<- ggplot(dereg_by_year, aes(x = YEAR, y = proportion)) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1990, 2005, by = 2), limits = c(1990, 2005)) +
+  theme_light() +
+  labs(title = "Proportion of Banks That Are Deregulated, 1990-2005",
+       caption = "Note that we only consider banks in states that (i) deregulated 
+       between 1990 and 2005 (ii) with headquarters in counties bordering on a 
+       neighbour state.") +
+  xlab("year") +
+  ylab("proportion of affected banks")
+dereged_prop_plot
+```
+There is basically only one staggered (bi-modal) wave between 1995 and 1997 for first deregulations. After this, all of the considered banks are under some kind of deregulated regime.
+```{r}
+lm_data<- joint_data_2|>
+  mutate(CERT = as.factor(CERT))|>
+  mutate(YEAR = as.factor(YEAR))|>
+  mutate(STNAME = as.factor(STNAME))|>
+  mutate(QUARTER = as.factor(QUARTER))
+
+DID_1<- lmer(ROA ~ first_dereg + (1 | YEAR) + (1 | QUARTER) + (1 | STNAME) + (1 | CERT), data = lm_data)
+
+summary(DID_1)
+```
+3
+Note that I include STNAME and QUARTER in the regression. STNAME is to account for local state effects, QUARTER for quarterly effects (since the data is raised quarterly). I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling.
+
+
+4
+The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
