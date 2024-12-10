@@ -8,14 +8,19 @@ output: html_document
 The 'jsonlite' library is required only if the API call is executed. I advise against it, as it has very long run time.
 ```{r}
 ## the 'conflicted' library from GitHub is recommended, but not mandatory
+library(devtools)
 library(conflicted)
-API_call<- TRUE
+API_call<- FALSE
 if(isTRUE(API_call)){
   library(jsonlite)
 }
 library(tidyverse)
 library(lme4)
-library(bacondecomp)
+library(bacondecomp) # loads, but data does not work with the package
+# library(DIDmultiplegt) # does not work as I do not have root access to update my Java
+# devtools::install_github("jonathandroth/pretrends")
+library(pretrends)
+library(HonestDiD)
 ```
 The following code contains the API call. Run it at your own peril - it will take some time. 
 ```{r}
@@ -53,7 +58,7 @@ bank_data<- bank_data|>
   mutate(YEAR = as.numeric(substr(REPDTE, 1, 4)))|>
   mutate(MONTH = as.numeric(substr(REPDTE, 5, 6)))|>
   mutate(DAY = as.numeric(substr(REPDTE, 7, 8)))|>
-  mutate(QUARTER = ceiling(MONTH / 4))|>
+  mutate(QUARTER = ceiling(MONTH / 3))|>
   #b
   dplyr::filter(STCNTY != "null" & STNAME != "" & STALP != "")|>
   #c
@@ -126,7 +131,7 @@ joint_data_1<- left_join(bank_data, adj_addage, by = "location")|>
 ```{r}
 # 1f and 2 (jointly)
 state_vector<- unique(joint_data_1$STNAME)
-year_vector<- seq(1990, 2005)
+year_vector<- seq(1990, 2006)
 
 branching_index_up<- branching_index_data|>
   mutate(YEAR = as.numeric(substr(Effective.Date, 1, 4)))|>
@@ -172,11 +177,18 @@ state_year_tibble<- state_year_list|>
 
 joint_data_2<- left_join(joint_data_1, state_year_tibble, by = c("STNAME", "YEAR"))|>
   # g
-  dplyr::filter(YEAR >= 1990 & YEAR <= 2005)|>
+  dplyr::filter(YEAR >= 1990 & YEAR <= 2006)|>
   # h
   # group_by(CERT, YEAR)|>
+  # arrange(QUARTER)|>
   # dplyr::filter(n() == 4)|>
+  # dplyr::filter(QUARTER == c(1, 2, 3, 4))|>
   # ungroup()|>
+  group_by(CERT)|>
+  arrange(REPDTE)|>
+  dplyr::filter(n() == 17 * 4)|>
+  dplyr::filter(QUARTER == rep(c(1, 2, 3, 4), 17))|>
+  ungroup()|>
   # i
   group_by(CERT)|>
   dplyr::filter(all(STALP == STALP[1]))|>
@@ -199,9 +211,9 @@ dereg_waves<- joint_data_2|>
 
 dereg_plot<- ggplot(dereg_waves, aes(x = YEAR, y = no_banks)) +
   geom_bar(stat = "identity") +
-  scale_x_continuous(breaks = seq(1990, 2005, by = 2), limits = c(1990, 2005)) +
+  scale_x_continuous(breaks = seq(1990, 2006, by = 2), limits = c(1990, 2006)) +
   theme_light() +
-  labs(title = "Number of Banks That Become Deregulated, 1990-2005") +
+  labs(title = "Number of Banks That Become Deregulated, 1990-2006") +
   xlab("year") +
   ylab("number of affected banks")
 dereg_plot
@@ -213,11 +225,11 @@ dereg_by_year<- joint_data_2|>
 
 dereged_prop_plot<- ggplot(dereg_by_year, aes(x = YEAR, y = proportion)) +
   geom_line() +
-  scale_x_continuous(breaks = seq(1990, 2005, by = 2), limits = c(1990, 2005)) +
+  scale_x_continuous(breaks = seq(1990, 2006, by = 2), limits = c(1990, 2006)) +
   theme_light() +
-  labs(title = "Proportion of Banks That Are Deregulated, 1990-2005",
+  labs(title = "Proportion of Banks That Are Deregulated, 1990-2006",
        caption = "Note that we only consider banks in states that (i) deregulated 
-       between 1990 and 2005 (ii) with headquarters in counties bordering on a 
+       between 1990 and 2006 (ii) with headquarters in counties bordering on a 
        neighbour state.") +
   xlab("year") +
   ylab("proportion of affected banks")
@@ -236,16 +248,30 @@ DID_1<- lmer(ROA ~ first_dereg + (1 | YEAR)  + (1 | STNAME) + (1 | CERT), data =
 summary(DID_1)
 ```
 3
-Note that I include STNAME in the regression. STNAME is to account for local state effects, QUARTER for quarterly effects (since the data is raised quarterly). I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster a defensible choice, even though it is theoretically possible.
-The DID coefficient is given as approximately 0.005 with a standard deviation of 0.03. That is to say, assuming the model is approximately correctly specified, we expect the deregulation of the branching of banks to increase return over assets on average by 0.5%; if the model is approximately correctly specified, we expect the true effect to lie with a probability of 95% between -0.06 and 0.07. Considering the 25% quantile of ROA is 0.72 and the 75% quantile is 1.38, the effect of deregulation has in this case only very small effects on the ROA.
+Note that I include STNAME in the regression. STNAME is to account for local state effects. I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster a defensible choice, even though it is theoretically possible.
+The DID coefficient is given as approximately 0.005 with a standard deviation of 0.03. That is to say, assuming the model is approximately correctly specified, we expect the deregulation of the branching of banks to increase return over assets on average by 0.5%; if the model is approximately correctly specified, we expect the true effect to lie with a probability of about 95% between -0.06 and 0.07. Considering the 25% quantile of ROA is 0.72 and the 75% quantile is 1.38, the effect of deregulation has in this case only very small effects on the ROA.
 
 4
 The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every US state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
 ```{r}
 # 5
 
-DID_2<- bacon(ROA ~ first_dereg  + STNAME, data = lm_data, id_var = "CERT", time_var = "YEAR")
 
+DID_2<- bacon(ROA ~ first_dereg  + model.matrix(~ STNAME - 1), data = joint_data_2, id_var = "CERT", time_var = "YEAR")
+
+
+```
+```{r}
+# 6
+
+
+```
+7
+The parallel trends assumption is the foundation of difference in differences. In the real world, we observe a treatment and a control group. But we really want, though, is to know 'What would have happened if the treatment group had not been treated? How much of a difference does the treatment make on the outcome?' To answer this, one may employ an untreated proxy. The proxy is in some ways similar and in some ways different to the treated unit. Because of those differences, we cannot say 'Had the treated unit not been treated, it would have ended like the control unit!' However, due to the similarities between treatment and control unit, we may be willing to bite the bullet of accepting parallel trends. Parallel trends mean that even though the status of the control/ treatment group might differ, their dynamics are similar. DID assumes identical, linear dynamics. Whether this is a defensible modeling choice must be evaluated case-by-case. 
+```{r}
+# https://github.com/jonathandroth/pretrends/blob/master/README.md
+slope80<- slope_for_power(sigma = NA, targetPower = 0.8, tVec = NA, referencePeriod = NA)
+pretrends(betahat = NA, sigma = NA, deltatrue = slope80, tVec = NA)
 
 ```
 
