@@ -17,7 +17,7 @@ if(isTRUE(API_call)){
 library(tidyverse)
 library(lme4)
 library(bacondecomp) # loads, but data does not work with the package
-# library(DIDmultiplegt) # does not work as I do not have root access to update my Java
+library(DIDmultiplegt) # does not work as I do not have root access to update my Java
 # devtools::install_github("jonathandroth/pretrends")
 library(pretrends)
 library(HonestDiD)
@@ -257,14 +257,18 @@ The diff-in-diff estimator in (3) has a problem accounting for the different tim
 # 5
 
 lm_data_2<- joint_data_2|>
-  select(ROA, first_dereg, STNAME, CERT, YEAR)|>
+  select(ROA, first_dereg, STNAME, CERT, YEAR, QUARTER)|>
   mutate(STNAME = fct_inorder(STNAME))|>
   pivot_wider(names_from = STNAME, values_from = STNAME, 
-              values_fn = list(STNAME = ~ 1), values_fill = list(STNAME = 0))
-DID_2<- bacon(ROA ~ first_dereg  + . -FE1 - FE2, data = lm_data_2, id_var = "CERT", time_var = "YEAR")
+              values_fn = list(STNAME = ~ 1), values_fill = list(STNAME = 0))|>
+  mutate(year_quarter = 10 * YEAR + QUARTER)|>
+  select(- YEAR, - QUARTER)
+# DID_2<- bacon(ROA ~ first_dereg + . -FE1 -FE2, data = lm_data_2, id_var = "CERT", time_var = "year_quarter")
+# apparently, the bacondecomp package does not work properly, as CERT is in the data. We will do the decomposition in the following manually
 
 
 ```
+
 ```{r}
 # 6
 
