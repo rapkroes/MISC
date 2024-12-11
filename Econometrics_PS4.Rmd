@@ -17,7 +17,7 @@ if(isTRUE(API_call)){
 library(tidyverse)
 library(lme4)
 library(bacondecomp) # loads, but data does not work with the package
-library(DIDmultiplegt) # does not work as I do not have root access to update my Java
+# library(DIDmultiplegt) # does not work as I do not have root access to update my Java
 # devtools::install_github("jonathandroth/pretrends")
 library(pretrends)
 library(HonestDiD)
@@ -128,10 +128,10 @@ joint_data_1<- left_join(bank_data, adj_addage, by = "location")|>
   select(- bordercounty, - county)
 
 ```
+The problem set does not specify what to do about policy changes that went back (i.e. tightening of regulation) and changes that did not change the index. We therefore choose to ignore the policy changes that left the index unaffected and ignore tightening regulation when it comes to the 'first deregulation' index.
 ```{r}
 # 1f and 2 (jointly)
 state_vector<- unique(joint_data_1$STNAME)
-year_vector<- seq(1990, 2006)
 
 branching_index_up<- branching_index_data|>
   mutate(YEAR = as.numeric(substr(Effective.Date, 1, 4)))|>
@@ -140,11 +140,22 @@ branching_index_up<- branching_index_data|>
   dplyr::filter(STNAME %in% state_vector)|>
   select(STNAME, YEAR, branching_index_new)|>
   group_by(STNAME)|>
-  arrange(STNAME, YEAR)|>
+  arrange(YEAR)|>
   mutate(first_dereg = 0)|>
-  mutate(first_dereg = replace(first_dereg, 1, 1))|>
-  ungroup()
+  mutate(first_dereg = 
+           if_else(branching_index_new != 0 & 
+                     row_number() == which(branching_index_new != 0)[1], 
+                   1, 
+                   first_dereg)
+         )|>
+  dplyr::filter(c(TRUE, branching_index_new[-1] != branching_index_new[-n()]))|>
+  dplyr::filter(
+    branching_index_new != 0 | first_dereg != 0 | row_number() != 1
+    )|>
+  ungroup()|>
+  arrange(STNAME)
 
+year_vector<- seq(1990, 2006)
 state_year_list<- list()
 current_status<- tibble(
   STNAME = state_vector,
@@ -179,11 +190,6 @@ joint_data_2<- left_join(joint_data_1, state_year_tibble, by = c("STNAME", "YEAR
   # g
   dplyr::filter(YEAR >= 1990 & YEAR <= 2006)|>
   # h
-  # group_by(CERT, YEAR)|>
-  # arrange(QUARTER)|>
-  # dplyr::filter(n() == 4)|>
-  # dplyr::filter(QUARTER == c(1, 2, 3, 4))|>
-  # ungroup()|>
   group_by(CERT)|>
   arrange(REPDTE)|>
   dplyr::filter(n() == 17 * 4)|>
@@ -265,7 +271,6 @@ lm_data_2<- joint_data_2|>
   select(- YEAR, - QUARTER)
 # DID_2<- bacon(ROA ~ first_dereg + . -FE1 -FE2, data = lm_data_2, id_var = "CERT", time_var = "year_quarter")
 # apparently, the bacondecomp package does not work properly, as CERT is in the data. We will do the decomposition in the following manually
-
 
 ```
 
