@@ -256,8 +256,12 @@ The diff-in-diff estimator in (3) has a problem accounting for the different tim
 ```{r}
 # 5
 
-
-DID_2<- bacon(ROA ~ first_dereg  + model.matrix(~ STNAME - 1), data = joint_data_2, id_var = "CERT", time_var = "YEAR")
+lm_data_2<- joint_data_2|>
+  select(ROA, first_dereg, STNAME, CERT, YEAR)|>
+  mutate(STNAME = fct_inorder(STNAME))|>
+  pivot_wider(names_from = STNAME, values_from = STNAME, 
+              values_fn = list(STNAME = ~ 1), values_fill = list(STNAME = 0))
+DID_2<- bacon(ROA ~ first_dereg  + . -FE1 - FE2, data = lm_data_2, id_var = "CERT", time_var = "YEAR")
 
 
 ```
