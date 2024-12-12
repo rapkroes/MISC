@@ -16,7 +16,7 @@ if(isTRUE(API_call)){
 }
 library(tidyverse)
 library(lme4)
-library(bacondecomp) # loads, but data does not work with the package
+library(bacondecomp) # loads, but data does not work with the package. I therefore calculate the estimates manually.
 # library(DIDmultiplegt) # does not work as I do not have root access to update my Java
 # devtools::install_github("jonathandroth/pretrends")
 library(pretrends)
@@ -207,6 +207,9 @@ print(list(nobs_year = table(joint_data_2$YEAR),
 
 
 ```
+nobs_year = number of observations for every year. Note that by balancing the panel we have 4 observations per bank per year.
+no_banks = number of banks in the filtered sample
+no_counties = number of counties, across which the bank headquarters were spread during the sample period.
 ```{r}
 dereg_waves<- joint_data_2|>
   select(CERT, YEAR, first_dereg)|>
@@ -241,36 +244,89 @@ dereged_prop_plot<- ggplot(dereg_by_year, aes(x = YEAR, y = proportion)) +
   ylab("proportion of affected banks")
 dereged_prop_plot
 ```
-There is basically only one staggered (bi-modal) wave between 1995 and 1997 for first deregulations. After this, all of the considered banks are under some kind of deregulated regime.
+There were basically two waves of initial deregulations: One starting in 1995 and ending in 1997, and one starting in 1999 ending in 2000. The first wave affected a kot of banks, nearly 70% of the banks in the sample. The second wave had a much smaller impact, only affecting around 10% of the sampled banks.
 ```{r}
+#additional data preparation for the different models
+dereged_states<- unique(branching_index_up$STNAME)
+earlyT_states<- branching_index_up|>
+  dplyr::filter(YEAR <= 1997)|>
+  select(STNAME)|>
+  unique()|>
+  unlist()
+
+lateT_states<- branching_index_up|>
+  dplyr::filter(YEAR %in% c(1999, 2000))|>
+  select(STNAME)|>
+  unique()|>
+  unlist()
+
 lm_data<- joint_data_2|>
   mutate(CERT = as.factor(CERT))|>
-  mutate(YEAR = as.factor(YEAR))|>
+  mutate(YEARf = as.factor(YEAR))|>
   mutate(STNAME = as.factor(STNAME))|>
-  mutate(QUARTER = as.factor(QUARTER))
+  mutate(QUARTERf = as.factor(QUARTER))|>
+  mutate(dereg_YEAR = first_dereg * YEAR)|>
+  mutate(YEAR_2 = YEAR)|>
+  pivot_wider(names_from = YEAR_2, values_from = dereg_YEAR, 
+              names_prefix = "dereg_", values_fill = list(dereg_YEAR = 0))|>
+  mutate(across(starts_with("dereg_"), ~ ifelse(. != 0, 1, 0)))|>
+  mutate(earlyT = dereg_1995 + dereg_1996 + dereg_1997)|>
+  mutate(lateT = dereg_1999 + dereg_2000)|>
+  mutate(untreated = as.numeric(!(STNAME %in% dereged_states)))|>
+  mutate(earlyG = as.numeric(STNAME %in% earlyT_states))|>
+  mutate(lateG = as.numeric(STNAME %in% lateT_states))
 
-DID_1<- lmer(ROA ~ first_dereg + (1 | YEAR)  + (1 | STNAME) + (1 | CERT), data = lm_data)
-
+DID_1<- lmer(ROA ~ first_dereg + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data)
 summary(DID_1)
+# estimated effect of both treatments: -0.02711
 ```
 3
-Note that I include STNAME in the regression. STNAME is to account for local state effects. I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster a defensible choice, even though it is theoretically possible.
-The DID coefficient is given as approximately 0.005 with a standard deviation of 0.03. That is to say, assuming the model is approximately correctly specified, we expect the deregulation of the branching of banks to increase return over assets on average by 0.5%; if the model is approximately correctly specified, we expect the true effect to lie with a probability of about 95% between -0.06 and 0.07. Considering the 25% quantile of ROA is 0.72 and the 75% quantile is 1.38, the effect of deregulation has in this case only very small effects on the ROA.
+Note that I include STNAME and QUARTER in the regression. STNAME is to account for local state effects. QUARTER accounts for seasonal effects.
+I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster a defensible choice under any circumstances, even though it is theoretically possible.
+The DID coefficient is given as approximately -0.03 with a standard deviation of 0.03. That is to say, assuming the model is approximately correctly specified, we expect the deregulation of the branching of banks to decrease return over assets on average by 0.3%; if the model is approximately correctly specified, we expect the true effect to lie with a probability of about 95% between -0.09 and 0.03. Considering the 25% quantile of ROA is 0.72 and the 75% quantile is 1.38, it appears that the kind of deregulation we have modeled had negligible effects on the affected banks' ROA.
 
 4
 The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every US state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
 ```{r}
 # 5
+DID_2<- lmer(ROA ~ dereg_1995 + dereg_1996 + dereg_1997 + dereg_1999 + dereg_2000  + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data)
 
-lm_data_2<- joint_data_2|>
-  select(ROA, first_dereg, STNAME, CERT, YEAR, QUARTER)|>
-  mutate(STNAME = fct_inorder(STNAME))|>
-  pivot_wider(names_from = STNAME, values_from = STNAME, 
-              values_fn = list(STNAME = ~ 1), values_fill = list(STNAME = 0))|>
-  mutate(year_quarter = 10 * YEAR + QUARTER)|>
-  select(- YEAR, - QUARTER)
-# DID_2<- bacon(ROA ~ first_dereg + . -FE1 -FE2, data = lm_data_2, id_var = "CERT", time_var = "year_quarter")
-# apparently, the bacondecomp package does not work properly, as CERT is in the data. We will do the decomposition in the following manually
+summary(DID_2)
+# estimated effects, 1995 to 2000: -0.11571, 0.06935, 0.02194, -0.27112, -0.31546
+```
+It appears from the exercise that we were supposed to create only a staggered treatment of two points in time, presumably from the two waves observed in (2). In the following, I estimate the model and make the comparisons using only these two waves. I do not consider this a smart modeling choice, because treatments are now spread across several years. The results are to be taken with a pinch of salt at any rate due to massive forking path issues (Gelman, Andrew and Loken, Eric (2013: The garden of forking paths: Why multiple comparisons can be a problem,even when there is no “fishing expedition” or “p-hacking” and the research hypothesis was posited ahead of time), a problem also referred to as 'researcher degrees of freedom' (Simmons, Joseph and Nelson, Leif and Simonsohn, Uri: False-Positive Psychology: Undisclosed Flexibility in Data Collection and Analysis Allows Presenting Anything as Significant).
+
+```{r}
+lm_data_A<- lm_data|>
+  dplyr::filter(lateG != 1)
+lm_data_B<- lm_data|>
+  dplyr::filter(earlyG != 1)
+lm_data_C<- lm_data|>
+  dplyr::filter(YEAR <= 1998)|>
+  dplyr::filter(untreated != 1)
+lm_data_D<- lm_data|>
+  dplyr::filter(YEAR >= 1998)|>
+  dplyr::filter(untreated != 1)
+
+# Bacon decomposition (A)
+DID_A <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_A)
+summary(DID_A)
+# estimated effect of early treatment: 1.030e-05
+
+# Bacon decomposition (B)
+DID_B <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_B)
+summary(DID_B)
+# estimated effect of late treatment: -1.565e-04
+  
+# Bacon decomposition (C)
+DID_C <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_C)
+summary(DID_C)
+# estimated effect of early treatment: -1.741e-06
+
+# Bacon decomposition (D)
+DID_D <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_D)
+summary(DID_D)
+# estimated effect of late treatment: -1.414e-04
 
 ```
 
