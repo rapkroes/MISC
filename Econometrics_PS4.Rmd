@@ -245,7 +245,7 @@ dereged_prop_plot<- ggplot(dereg_by_year, aes(x = YEAR, y = proportion)) +
   ylab("proportion of affected banks")
 dereged_prop_plot
 ```
-There were basically two waves of initial deregulations: One starting in 1995 and ending in 1997, and one starting in 1999 ending in 2000. The first wave affected a kot of banks, nearly 70% of the banks in the sample. The second wave had a much smaller impact, only affecting around 10% of the sampled banks.
+There were basically two waves of initial deregulations: One starting in 1995 and ending in 1997, and one starting in 1999 ending in 2000. The first wave affected a lot of banks, nearly 70% of the banks in the sample. The second wave had a much smaller impact, only affecting around 10% of the sampled banks.
 ```{r}
 #additional data preparation for the different models
 dereged_states<- unique(branching_index_up$STNAME)
