@@ -18,7 +18,7 @@ if(isTRUE(API_call)){
 library(tidyverse)
 library(lme4)
 # library(bacondecomp)
-# library(DIDmultiplegt) # does not work as I do not have root access to update my Java
+library(DIDmultiplegt)
 # devtools::install_github("jonathandroth/pretrends")
 library(pretrends)
 library(HonestDiD)
@@ -333,17 +333,37 @@ summary(DID_D)
 
 ```
 As discussed above, the Bacon-Goodman decomposition cannot be applied as the panel is not balanced in the sense of Andrew Bacon-Goodman (2021): Difference-in-differences with variation in treatment timing. It is therefore not possible to show that the estimator from (3) can be decomposed according to the estimates in (5). However, looking at the estimators makes the decompositability of a difference in differences estimator plausible. The largest number of banks is in the early treatment group. The late treatment group is nearly negligibly small. The rest of the mass is in the control group. We may conclude that estimator A must have the largest weight of the four. Estimator B must be weighted very little, as it is based on the late treatment and control groups. Estimators C and D are also based on the early treatment group, which gives them some weight, but not as much as A, as they are restricted in the time domain. 
+
+6
+It is not entirely clear to me what I am supposed to do when I am to 'run an event study with 4 pre-event and 6 post-event years [...]' It sounds like filtering the data such that only four year before deregulation of a state and 6 years after deregulation are contained. However, this raises questions (which dates am I to select as event dates) and issues (if I filter the data even more, there will be questions of what exactly the model identifies). Therefore, absent better information, I use the full data set.
+My private laptop does not have the computational power to estimate the model with the bank fixed effects, and my work laptop does not root access to install the latest 64-bit Java version needed to run DIDmultiplegt. I therefore dropped the bank fixed effects in this analysis and hope you will forgive me.
+
 ```{r}
-# 6
+dyn_data<- lm_data#|>
+#   pivot_wider(names_from = CERT, values_from = CERT, names_prefix = "CERT_")|>
+#   mutate(across(starts_with("CERT_"), ~ ifelse(is.na(.), 0, 1)))
+# CERT_colnames<- dyn_data|>
+#   select(starts_with("CERT"))|>
+#   colnames()
 
-
+DID_3<- did_multiplegt(mode = "dyn", df = dyn_data, outcome = "ROA", group = "STNAME", time = "YEAR", treatment = "branching_index_new", effects = 6, cluster = "STNAME")
+summary(DID_3)
+DID_3$plot
 ```
+The immediate effect ranges, if the model is sufficiently correct specified, between approximately -0.01 and 0.07. Thus the effect would be moderately positive at best and even be slightly negative at worst. The same applies for the average effect over 6 years: The estimated effect ranges approximately between -0.00 and 0.04.
+If we look at the individual effects over the year, we see a slight rise in expected ROA from the first lag on, after which the effect stagnates. If we expect the policy to raise ROA, this does make sense economically; for the branching out to take place, it takes time. After the branching out happens, it is reasonable that the effect stagnates.
+However, this is a hypothesis after the results are known (HARK), so it must be treated with caution.
 7
 The parallel trends assumption is the foundation of difference in differences. In the real world, we observe a treatment and a control group. But we really want, though, is to know 'What would have happened if the treatment group had not been treated? How much of a difference does the treatment make on the outcome?' To answer this, one may employ an untreated proxy. The proxy is in some ways similar and in some ways different to the treated unit. Because of those differences, we cannot say 'Had the treated unit not been treated, it would have ended like the control unit!' However, due to the similarities between treatment and control unit, we may be willing to bite the bullet of accepting parallel trends. Parallel trends mean that even though the status of the control/ treatment group might differ, their dynamics are similar. DID assumes identical, linear dynamics. Whether this is a defensible modeling choice must be evaluated case-by-case. 
+
+Note that the honestdid package on CRAN does not have a command called 'honestdid' or something similar. I believe the function we might be interested in is 'createSensitivityResults'.
 ```{r}
 # https://github.com/jonathandroth/pretrends/blob/master/README.md
-slope80<- slope_for_power(sigma = NA, targetPower = 0.8, tVec = NA, referencePeriod = NA)
+im<- DID_3$results$Effects
+t_value_vec<- im[, 1] / im[, 2]
+slope80<- slope_for_power(sigma = DID_3$coef$vcov, targetPower = 0.8, tVec = NA, referencePeriod = NA)
 pretrends(betahat = NA, sigma = NA, deltatrue = slope80, tVec = NA)
 
+createSensitivityResults(betahat = DID_3$coef$b, sigma = DID_3$coef$vcov, numPrePeriods = 0, numPostPeriods = 6, Mvec = 2, seed = 1234)
 ```
 
