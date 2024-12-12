@@ -6,6 +6,7 @@ output: html_document
 ---
 
 The 'jsonlite' library is required only if the API call is executed. I advise against it, as it has very long run time.
+bacondecomp does not work with the data. The reason is simple: The data is not balanced in the sense of package. We have four observations per unit per year. The package checks whether there is one observation per unit per year and responds with an error because this criterion is not fulfilled. The only work-around I see would have been to use only individual quarters; however, this would be a major change to the data. As the assignment does not mention such a change, I do not apply it and will discuss the results *even though the Bacon-Goodman decomposition cannot be applied*.
 ```{r}
 ## the 'conflicted' library from GitHub is recommended, but not mandatory
 library(devtools)
@@ -16,7 +17,7 @@ if(isTRUE(API_call)){
 }
 library(tidyverse)
 library(lme4)
-library(bacondecomp) # loads, but data does not work with the package. I therefore calculate the estimates manually.
+# library(bacondecomp)
 # library(DIDmultiplegt) # does not work as I do not have root access to update my Java
 # devtools::install_github("jonathandroth/pretrends")
 library(pretrends)
@@ -311,25 +312,25 @@ lm_data_D<- lm_data|>
 # Bacon decomposition (A)
 DID_A <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_A)
 summary(DID_A)
-# estimated effect of early treatment: 1.030e-05
+# estimated effect of early treatment: 0.02056
 
 # Bacon decomposition (B)
 DID_B <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_B)
 summary(DID_B)
-# estimated effect of late treatment: -1.565e-04
+# estimated effect of late treatment: -0.31295
   
 # Bacon decomposition (C)
 DID_C <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_C)
 summary(DID_C)
-# estimated effect of early treatment: -1.741e-06
+# estimated effect of early treatment: -0.003482
 
 # Bacon decomposition (D)
 DID_D <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_D)
 summary(DID_D)
-# estimated effect of late treatment: -1.414e-04
+# estimated effect of late treatment: -0.28278
 
 ```
-
+As discussed above, the Bacon-Goodman decomposition cannot be applied as the panel is not balanced in the sense of Andrew Bacon-Goodman (2021): Difference-in-differences with variation in treatment timing. It is therefore not possible to show that the estimator from (3) can be decomposed according to the estimates in (5). However, looking at the estimators makes the decompositability of a difference in differences estimator plausible. The largest number of banks is in the early treatment group. The late treatment group is nearly negligibly small. The rest of the mass is in the control group. We may conclude that estimator A must have the largest weight of the four. Estimator B must be weighted very little, as it is based on the late treatment and control groups. Estimators C and D are also based on the early treatment group, which gives them some weight, but not as much as A, as they are restricted in the time domain. 
 ```{r}
 # 6
 
