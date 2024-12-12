@@ -6,7 +6,7 @@ output: html_document
 ---
 
 The 'jsonlite' library is required only if the API call is executed. I advise against it, as it has very long run time.
-bacondecomp does not work with the data. The reason is simple: The data is not balanced in the sense of package. We have four observations per unit per year. The package checks whether there is one observation per unit per year and responds with an error because this criterion is not fulfilled. The only work-around I see would have been to use only individual quarters; however, this would be a major change to the data. As the assignment does not mention such a change, I do not apply it and will discuss the results *even though the Bacon-Goodman decomposition cannot be applied*.
+bacondecomp does not work with the data. The reason is simple: The data is not balanced in the sense of package. We have four observations per unit per year. The package checks whether there is one observation per unit per year and responds with an error because this criterion is not fulfilled. The only work-around I see would have been to use only individual quarters; however, this would be a major change to the data. As the assignment does not mention such a change, I do not apply it and will discuss the results without the 'true' Bacon-Goodman decomposition as it cannot be applied.
 ```{r}
 ## the 'conflicted' library from GitHub is recommended, but not mandatory
 library(devtools)
@@ -28,7 +28,7 @@ The following code contains the API call. Run it at your own peril - it will tak
 if(isTRUE(API_call)){
   #curate bank data
   data_list<- list()
-  pb<- txtProgressBar(min = 1, max = 200, )
+  pb<- txtProgressBar(min = 1, max = 200)
   for(i in seq(1, 165)){
     offset_i<- format((i - 1) * 10000, scientific = FALSE)
     url_i<- url(description  = paste0("http://banks.data.fdic.gov/api/financials?fields=CERT,STALP,STCNTY,STNAME,ROA,REPDTE&limit=1000&offset=", offset_i))
@@ -46,7 +46,9 @@ branching_index_data<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads
 if(isTRUE(API_call)){
   bank_data<- bind_rows(data_list)
 }else{
-  bank_data<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/raw_bank_data.csv")
+  bank_data_1<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/raw_bank_data_1.csv")
+  bank_data_2<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/raw_bank_data_2.csv")
+  bank_data<- bind_rows(list(bank_data_1, bank_data_2))
 }
 ```
 
@@ -277,23 +279,23 @@ lm_data<- joint_data_2|>
   mutate(earlyG = as.numeric(STNAME %in% earlyT_states))|>
   mutate(lateG = as.numeric(STNAME %in% lateT_states))
 
-DID_1<- lmer(ROA ~ first_dereg + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data)
+DID_1<- lmer(ROA ~ first_dereg + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data)
 summary(DID_1)
-# estimated effect of both treatments: -0.02711
+# estimated effect of both treatments: -0.001816
 ```
 3
-Note that I include STNAME and QUARTER in the regression. STNAME is to account for local state effects. QUARTER accounts for seasonal effects.
-I admit to not having a clue if this model is overly reasonable on a general level - I am not familiar with the data generation process (DGP) of the data used for this study. Understanding the DGP is essential for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster a defensible choice under any circumstances, even though it is theoretically possible.
+Note that I include STNAME in the regression. STNAME is to account for local state effects. QUARTER used to be in the regression to account for seasonal effects. However, The model failed to converge, so I removed it from this and every subsequent equation.
+I admit to not having a clue if this model is overly reasonable on a general level -I am not familiar with the data generation process (DGP) of the data used for this study- and understanding the DGP is fundamental for defensible modelling. Anyway, I do not consider leaving out the variable by which I cluster a defensible choice under any circumstances, even though it is theoretically possible.
 The DID coefficient is given as approximately -0.03 with a standard deviation of 0.03. That is to say, assuming the model is approximately correctly specified, we expect the deregulation of the branching of banks to decrease return over assets on average by 0.3%; if the model is approximately correctly specified, we expect the true effect to lie with a probability of about 95% between -0.09 and 0.03. Considering the 25% quantile of ROA is 0.72 and the 75% quantile is 1.38, it appears that the kind of deregulation we have modeled had negligible effects on the affected banks' ROA.
 
 4
 The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every US state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
 ```{r}
 # 5
-DID_2<- lmer(ROA ~ dereg_1995 + dereg_1996 + dereg_1997 + dereg_1999 + dereg_2000  + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data)
+DID_2<- lmer(ROA ~ dereg_1995 + dereg_1996 + dereg_1997 + dereg_1999 + dereg_2000  + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data)
 
 summary(DID_2)
-# estimated effects, 1995 to 2000: -0.11571, 0.06935, 0.02194, -0.27112, -0.31546
+# estimated effects, 1995 to 2000: 0.045989, 0.019123, 0.006058, -0.117779, -0.110085
 ```
 It appears from the exercise that we were supposed to create only a staggered treatment of two points in time, presumably from the two waves observed in (2). In the following, I estimate the model and make the comparisons using only these two waves. I do not consider this a smart modeling choice, because treatments are now spread across several years. The results are to be taken with a pinch of salt at any rate due to massive forking path issues (Gelman, Andrew and Loken, Eric (2013: The garden of forking paths: Why multiple comparisons can be a problem,even when there is no “fishing expedition” or “p-hacking” and the research hypothesis was posited ahead of time), a problem also referred to as 'researcher degrees of freedom' (Simmons, Joseph and Nelson, Leif and Simonsohn, Uri: False-Positive Psychology: Undisclosed Flexibility in Data Collection and Analysis Allows Presenting Anything as Significant).
 
@@ -310,24 +312,24 @@ lm_data_D<- lm_data|>
   dplyr::filter(untreated != 1)
 
 # Bacon decomposition (A)
-DID_A <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_A)
+DID_A <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_A)
 summary(DID_A)
-# estimated effect of early treatment: 0.02056
+# estimated effect of early treatment: 0.01466
 
 # Bacon decomposition (B)
-DID_B <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_B)
+DID_B <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_B)
 summary(DID_B)
-# estimated effect of late treatment: -0.31295
+# estimated effect of late treatment: -0.11074
   
 # Bacon decomposition (C)
-DID_C <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_C)
+DID_C <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_C)
 summary(DID_C)
-# estimated effect of early treatment: -0.003482
+# estimated effect of early treatment: 0.008121
 
 # Bacon decomposition (D)
-DID_D <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT) + (1 | QUARTERf), data = lm_data_D)
+DID_D <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_D)
 summary(DID_D)
-# estimated effect of late treatment: -0.28278
+# estimated effect of late treatment: -0.10113
 
 ```
 As discussed above, the Bacon-Goodman decomposition cannot be applied as the panel is not balanced in the sense of Andrew Bacon-Goodman (2021): Difference-in-differences with variation in treatment timing. It is therefore not possible to show that the estimator from (3) can be decomposed according to the estimates in (5). However, looking at the estimators makes the decompositability of a difference in differences estimator plausible. The largest number of banks is in the early treatment group. The late treatment group is nearly negligibly small. The rest of the mass is in the control group. We may conclude that estimator A must have the largest weight of the four. Estimator B must be weighted very little, as it is based on the late treatment and control groups. Estimators C and D are also based on the early treatment group, which gives them some weight, but not as much as A, as they are restricted in the time domain. 
