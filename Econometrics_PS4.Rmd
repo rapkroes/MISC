@@ -6,7 +6,7 @@ output: html_document
 ---
 
 The 'jsonlite' library is required only if the API call is executed. I advise against it, as it has very long run time.
-bacondecomp does not work with the data. The reason is simple: The data is not balanced in the sense of package. We have four observations per unit per year. The package checks whether there is one observation per unit per year and responds with an error because this criterion is not fulfilled. The only work-around I see would have been to use only individual quarters; however, this would be a major change to the data. As the assignment does not mention such a change, I do not apply it and will discuss the results without the 'true' Bacon-Goodman decomposition as it cannot be applied.
+bacondecomp does not work with the data. The reason is simple: The data is not balanced in the sense of package. We have four observations per unit per year. The package checks whether there is one observation per unit per year and responds with an error because this criterion is not fulfilled. The only work-around I see would have been to use only individual quarters; however, this would be a major change to the data. As the assignment does not mention such a change, I do not apply it and will discuss the results without the 'true' Bacon-Goodman decomposition as is not applicable for the data at hand.
 ```{r}
 ## the 'conflicted' library from GitHub is recommended, but not mandatory
 library(devtools)
@@ -18,7 +18,7 @@ if(isTRUE(API_call)){
 library(tidyverse)
 library(lme4)
 # library(bacondecomp)
-library(DIDmultiplegt)
+library(DIDmultiplegtDYN)
 # devtools::install_github("jonathandroth/pretrends")
 library(pretrends)
 library(HonestDiD)
@@ -189,7 +189,9 @@ state_year_tibble<- state_year_list|>
   bind_rows()|>
   arrange(STNAME)
 
-joint_data_2<- left_join(joint_data_1, state_year_tibble, by = c("STNAME", "YEAR"))|>
+joint_data_2<- left_join(
+  joint_data_1, state_year_tibble, by = c("STNAME", "YEAR")
+  )|>
   # g
   dplyr::filter(YEAR >= 1990 & YEAR <= 2006)|>
   # h
@@ -279,7 +281,8 @@ lm_data<- joint_data_2|>
   mutate(earlyG = as.numeric(STNAME %in% earlyT_states))|>
   mutate(lateG = as.numeric(STNAME %in% lateT_states))
 
-DID_1<- lmer(ROA ~ first_dereg + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data)
+DID_1<- lmer(ROA ~ first_dereg + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), 
+             data = lm_data)
 summary(DID_1)
 # estimated effect of both treatments: -0.001816
 ```
@@ -292,7 +295,9 @@ The DID coefficient is given as approximately -0.03 with a standard deviation of
 The diff-in-diff estimator in (3) has a problem accounting for the different timing of the treatment. If every US state were modelled entirely independent from each other, this would not be a problem. However, the model ties the states together using random (YEAR) effects. The staggered treatment coincides with three different random effects, as there are three points in time when the treatment (according to this crude model) is administered. According to the lecture slides, this can be formulated as a multiple comparison problem violating the parallel trends assumption.
 ```{r}
 # 5
-DID_2<- lmer(ROA ~ dereg_1995 + dereg_1996 + dereg_1997 + dereg_1999 + dereg_2000  + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data)
+DID_2<- lmer(ROA ~ dereg_1995 + dereg_1996 + dereg_1997 + dereg_1999 + 
+               dereg_2000  + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), 
+             data = lm_data)
 
 summary(DID_2)
 # estimated effects, 1995 to 2000: 0.045989, 0.019123, 0.006058, -0.117779, -0.110085
@@ -312,22 +317,26 @@ lm_data_D<- lm_data|>
   dplyr::filter(untreated != 1)
 
 # Bacon decomposition (A)
-DID_A <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_A)
+DID_A <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), 
+              data = lm_data_A)
 summary(DID_A)
 # estimated effect of early treatment: 0.01466
 
 # Bacon decomposition (B)
-DID_B <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_B)
+DID_B <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), 
+              data = lm_data_B)
 summary(DID_B)
 # estimated effect of late treatment: -0.11074
   
 # Bacon decomposition (C)
-DID_C <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_C)
+DID_C <- lmer(ROA ~ earlyT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), 
+              data = lm_data_C)
 summary(DID_C)
 # estimated effect of early treatment: 0.008121
 
 # Bacon decomposition (D)
-DID_D <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), data = lm_data_D)
+DID_D <- lmer(ROA ~ lateT + (1 | YEARf)  + (1 | STNAME) + (1 | CERT), 
+              data = lm_data_D)
 summary(DID_D)
 # estimated effect of late treatment: -0.10113
 
@@ -339,31 +348,36 @@ It is not entirely clear to me what I am supposed to do when I am to 'run an eve
 My private laptop does not have the computational power to estimate the model with the bank fixed effects, and my work laptop does not root access to install the latest 64-bit Java version needed to run DIDmultiplegt. I therefore dropped the bank fixed effects in this analysis and hope you will forgive me.
 
 ```{r}
-dyn_data<- lm_data#|>
-#   pivot_wider(names_from = CERT, values_from = CERT, names_prefix = "CERT_")|>
-#   mutate(across(starts_with("CERT_"), ~ ifelse(is.na(.), 0, 1)))
-# CERT_colnames<- dyn_data|>
-#   select(starts_with("CERT"))|>
-#   colnames()
-
-DID_3<- did_multiplegt(mode = "dyn", df = dyn_data, outcome = "ROA", group = "STNAME", time = "YEAR", treatment = "branching_index_new", effects = 6, cluster = "STNAME")
+DID_3<- did_multiplegt_dyn(df = lm_data, outcome = "ROA", group = "STNAME", 
+                           time = "YEAR", treatment = "branching_index_new", 
+                           placebo = 4, effects = 6, cluster = "STNAME")
 summary(DID_3)
-DID_3$plot
 ```
-The immediate effect ranges, if the model is sufficiently correct specified, between approximately -0.01 and 0.07. Thus the effect would be moderately positive at best and even be slightly negative at worst. The same applies for the average effect over 6 years: The estimated effect ranges approximately between -0.00 and 0.04.
+The immediate effect ranges, if the model is sufficient correctly specified*, between approximately -0.01 and 0.07. Thus the effect would be moderately positive at best and even be slightly negative at worst. The same applies for the average effect over 6 years: The estimated effect ranges approximately between -0.00 and 0.04. It may be concluded that loosening the branching regulations did not affect the affected banks in a non-negligible way.
 If we look at the individual effects over the year, we see a slight rise in expected ROA from the first lag on, after which the effect stagnates. If we expect the policy to raise ROA, this does make sense economically; for the branching out to take place, it takes time. After the branching out happens, it is reasonable that the effect stagnates.
 However, this is a hypothesis after the results are known (HARK), so it must be treated with caution.
+*This refers especially to omitted variable bias.
+
 7
 The parallel trends assumption is the foundation of difference in differences. In the real world, we observe a treatment and a control group. But we really want, though, is to know 'What would have happened if the treatment group had not been treated? How much of a difference does the treatment make on the outcome?' To answer this, one may employ an untreated proxy. The proxy is in some ways similar and in some ways different to the treated unit. Because of those differences, we cannot say 'Had the treated unit not been treated, it would have ended like the control unit!' However, due to the similarities between treatment and control unit, we may be willing to bite the bullet of accepting parallel trends. Parallel trends mean that even though the status of the control/ treatment group might differ, their dynamics are similar. DID assumes identical, linear dynamics. Whether this is a defensible modeling choice must be evaluated case-by-case. 
 
-Note that the honestdid package on CRAN does not have a command called 'honestdid' or something similar. I believe the function we might be interested in is 'createSensitivityResults'.
+The following code does not run. There are computational issues with pretrends and honestdid. pretrends runs into trouble because it uses stats:uniroot. The error occurs as the in uniroot evaluated function has to have different signs at the start and end points of their evaluation. I have not found a fix for this problem.
+Note that the honestdid package on CRAN does not have a command called 'honestdid' or something similar. I believe the function we might be interested in is 'createSensitivityResults'. However, this function, too, evaluates with an error. It warns that the variance covariance matrix is 'not numerically positive semi-definite', which is surprising given that variance-covariance is most always singular (except m>n). It furthermore exits with an error as 'task 1 failed - "Problem does not follow DCP rules."' No further clues as to why that might be are given.
 ```{r}
-# https://github.com/jonathandroth/pretrends/blob/master/README.md
-im<- DID_3$results$Effects
-t_value_vec<- im[, 1] / im[, 2]
-slope80<- slope_for_power(sigma = DID_3$coef$vcov, targetPower = 0.8, tVec = NA, referencePeriod = NA)
-pretrends(betahat = NA, sigma = NA, deltatrue = slope80, tVec = NA)
-
-createSensitivityResults(betahat = DID_3$coef$b, sigma = DID_3$coef$vcov, numPrePeriods = 0, numPostPeriods = 6, Mvec = 2, seed = 1234)
+# sigma_new<- DID_3$coef$vcov[c(10:7, 1:6),]|>
+#   as.data.frame()|>
+#   select(
+#     Placebo_4, Placebo_3, Placebo_2, Placebo_1, Effect_1, Effect_2, Effect_3, 
+#     Effect_4, Effect_5, Effect_6
+#     )|>
+#   as.matrix()
+# beta_new<- DID_3$coef$b[c(10:7, 1:6)]
+# t_effects_vec<- DID_3$results$Effects[, 1] / DID_3$results$Effects[, 2]
+# t_pretreat_vec<- DID_3$results$Placebos[, 1] / DID_3$results$Placebos[, 2]
+# 
+# slope80<- slope_for_power(sigma = sigma_new, targetPower = 0.8, tVec = seq(-4, 5))
+# pretrends(betahat = DID_3$coef$b, sigma = DID_3$coef$vcov, deltatrue = slope80, tVec = c(seq(0, 5), seq(-1, -4)))
+# 
+# createSensitivityResults(betahat = beta_new, sigma = sigma_new, numPrePeriods = 4, numPostPeriods = 6, Mvec = 2, seed = 1234)
 ```
 
