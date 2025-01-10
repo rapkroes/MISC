@@ -1,0 +1,36 @@
+---
+title: 'Home Assignment 7:  VAR'
+author: "Albert 'Chanda' Kasoma, Raphael Kroes, Hao Wei"
+date: "2025-01-10"
+output: html_document
+---
+
+```{r}
+library(conflicted)
+library(tidyverse)
+library(vars)
+```
+
+```{r}
+final_data<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/final_combined_data.csv", colClasses = c("character", rep("numeric", 5)))
+```
+```{r}
+final_dm<- final_data|>
+  mutate(
+    log_prod = log(production_index),
+    difflog_prod = c(NA, diff(log_prod)),
+    log_CPI = log(CPI),
+    cum_shocks = cumsum(shock_freq),
+    diff_unempl = c(NA, diff(unemployment_rate))
+    )|>
+  dplyr::select(- date, - production_index, - log_prod, - CPI, - cum_shocks,
+                - unemployment_rate)|>
+  drop_na()
+```
+```{r}
+# is that a realistic number? Shouldn't it be -1 for every observation?
+VAR_1<- VAR(y = final_dm, type = "both", season = 12, lag.max = 10, ic = "AIC")
+# VAR_1<- ar(final_dm, aic = TRUE, order.max = 10)
+VAR_1
+```
+
