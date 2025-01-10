@@ -1,0 +1,71 @@
+---
+title: "Econometrics_PS5"
+author: "Raphael Kroes"
+date: "2024-12-18"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+# the conflicted package is not necessary for the code to run, but helpful in producing it
+library(conflicted)
+```
+```{r}
+lower_at_boundary<- 1e4
+market_LR_bounds<- c(0, 1)
+book_LR_bounds<- c(0, 1)
+winsorisation_quantiles<- c(0.01, 0.99)
+```
+
+```{r}
+#create chunk to read data from GitHub
+
+```
+
+```{r}
+data_1<- as_tibble(compustat_FY05)|>
+  mutate(market_LR = (dltt + dlc) / (at - ceq + csho * prcc_f))|>
+  mutate(book_LR = (dltt + dlc) / at)|>
+  mutate(log_at = log(at))|>
+  mutate(ROA = ni / at)|>
+  mutate(payout = (dvc + prstkc) / at)|>
+  mutate(tangible = ppegt / at)|>
+  mutate(sic_1dig = as.factor(substr(sic, 1, 1)))|>
+  select(gvkey, market_LR, book_LR, log_at, ROA, payout, tangible, at, sic, 
+         sic_1dig)
+
+#check rating levels
+rating_levels<- c("AAA", "AA+", "AA", "AA-", "A+", "A", "A-", "BBB+", "BBB",
+                  "BBB-", "BB+", "BB", "BB-", "B+", "B", "B-", "CCC+", "CCC",
+                  "CCC-", "CC+", "CC", "CC-", "C+", "C", "C-", "D", "SD")
+data_2<- as_tibble(compustat_R05)|>
+  mutate(cr_available = as.numeric(!is.na(splticrm)))|>
+  mutate(
+    splticrm_of = factor(splticrm, levels = rating_levels, ordered = TRUE)
+    )|>
+  select(gvkey, splticrm, splticrm_of, cr_available)
+
+```
+```{r}
+#1544 companies from data_1 do not have a partner in data_2
+data_full<- inner_join(data_2, data_1, by = "gvkey")|>
+  group_by(gvkey)|>
+  dplyr::filter(all(at >= lower_at_boundary))|>
+  dplyr::filter(between(market_LR, market_LR_bounds[1], market_LR_bounds[2]))|>
+  dplyr::filter(between(book_LR, book_LR_bounds[1], book_LR_bounds[2]))|>
+  ungroup()#|>
+  mutate(win_market_LR = if_else(market_LR <= quantile(market_LR, probs = winsorisation_quantiles[1])))
+#complete winsorisation
+```
+```{r}
+lm_1<- glm(
+  market_LR ~ cr_available + log_at + ROA + payout + tangible + sic_1dig,
+  family = quasibinomial("logit"), data = data_full, na.action = na.omit
+  )
+lm_1<- glm(
+  market_LR ~ cr_available + log_at + ROA + payout + tangible + sic_1dig,
+  family = "gaussian", data = data_full, na.action = na.omit
+  )
+#the model only considers complete cases, i.e. cases for which there are no NAs.
+```
+
