@@ -164,6 +164,8 @@ The Breusch-Godfrey test rejects the notion that the residuals are not autocorre
 Note that the cumulated shocks are a problematic variable for any stationary VAR:
 "We are asked to estimate VARs including the cumulative sum of shocks... A cumulative series, however, behaves monotonically. This is a violation of the necessary stationarity assumption." (Email from Raphael Kroes to Malte Rieth on January 10th, "PhD Homework: Question About Non-stationarity")
 In the following, we will stick with the MSFE minimising maximum lag order. There might be better ways to specify the model than the model specification thus chosen, however this takes a deeper understanding of the data generation process behind these variables.
+
+*4. Estimate a recursive/ triangular VAR(p) given your lag choice from 2. and 3. with the variables ordered as given above. Compute and plot the impulse responses of the endogenous variables to a monetary policy shock, and some measure to judge their statistical significance. Discuss the results.*
 ```{r}
 restr_mat<- diag(3)
 restr_mat[c(2, 3, 6)]<- NA
@@ -180,4 +182,15 @@ irf(VAR_3, n.ahead = 12, impulse = "cum_shocks")|>
 ```
 Independent of whether we impose restrictions on the estimation of our model or not, the patterns we observe do not change: The monetary shock slowly dissipates over time. The CPI increases over time - this is in line with standard monetary policy. However, the first difference of the log production index decreases. The first difference of the log production index (i.e. the log of the month-over-month growth rate) however goes down and slowly recovers. This is contrary to economic intuition: A monetary shock should lead to increased productivity, should it not? There are several possible explanations. For starters, none of the effects are significant (except for the monetary shock which was set to be equal to 1). Then we must also consider that the chosen model is extremely parsimonious, only using one lag. It is therefore impossible for the model to display 'wiggly' behaviour by design. The model is optimised to forecast the next period's outcome. For horizons longer than one period this model is not suitable. But why is a monetary shock associated with decreasing industrial growth rates? The keyword of the last sentence is 'associated': The model shows correlations, not causal effects. The ECB induces monetary shocks when the production goes down to counteract it. 
 
+*5. Order the cumulated monetary policy shock first in the recursive VAR(p) and re- compute and plot the impulse responses and their statistical significance to a monetary policy shock. Discuss the results and compare them to those from 4. verbally. Critically discuss the different assumptions underlying each ordering.*
+```{r}
+restr_mat_2<- diag(3)
+restr_mat_2[c(2, 7, 8)]<- NA
+VAR_4<- SVAR(VAR_2, estmethod = "direct", Amat = restr_mat_2)
+summary(VAR_4)
+```
+```{r}
+irf(VAR_4, n.ahead = 12, impulse = "cum_shocks")|>
+  plot()
+```
 
