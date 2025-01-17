@@ -9,28 +9,175 @@ output: html_document
 library(conflicted)
 library(tidyverse)
 library(vars)
+library(urca)
 ```
 
 ```{r}
 final_data<- read.csv("https://github.com/rapkroes/MISC/raw/refs/heads/main/final_combined_data.csv", colClasses = c("character", rep("numeric", 5)))
 ```
+*1. Compute the cumulative sum of the monthly monetary policy shocks. Form a reduced form VAR model with the log of industrial production, the log of consumer prices, and the cumulated monetary policy shock series.*
 ```{r}
 final_dm<- final_data|>
   mutate(
+    diff_i = c(NA, diff(government_bond)),
     log_prod = log(production_index),
     difflog_prod = c(NA, diff(log_prod)),
     log_CPI = log(CPI),
     cum_shocks = cumsum(shock_freq),
     diff_unempl = c(NA, diff(unemployment_rate))
     )|>
-  dplyr::select(- date, - production_index, - log_prod, - CPI, - cum_shocks,
-                - unemployment_rate)|>
-  drop_na()
+  dplyr::select(difflog_prod, log_CPI, cum_shocks)|>
+  drop_na()|>
+  #z-standardisation of the variables
+  mutate(across(where(is.numeric), ~ . - mean(.)))|>
+  mutate(across(where(is.numeric), scale))
 ```
 ```{r}
-# is that a realistic number? Shouldn't it be -1 for every observation?
-VAR_1<- VAR(y = final_dm, type = "both", season = 12, lag.max = 10, ic = "AIC")
-# VAR_1<- ar(final_dm, aic = TRUE, order.max = 10)
-VAR_1
+##tests data for stationarity
+im<- final_dm|>
+  mutate(index = seq(1, nrow(final_dm)))
+# # interest rate on government bonds
+# ggplot(im, aes(x = index, y = diff_i)) +
+#     geom_line() +
+#     labs(title = "interest rate", x = "time index", y = "interest rate") +
+#     theme_bw()
+# adf_governmentbond<- ur.df(final_dm$diff_i, type = "trend", lags = 24, 
+#                  selectlags = "AIC")
+# print("government bond interest rate")
+# summary(adf_governmentbond)
+
+# industrial production
+ggplot(im, aes(x = index, y = difflog_prod)) +
+    geom_line() +
+    labs(title = "log production index (1st diff.)", x = "time index", 
+         y = "log production index") +
+    theme_bw()
+adf_prod<- ur.df(final_dm$difflog_prod, type = "trend", lags = 24, 
+                 selectlags = "AIC")
+print("log production index (1st diff.)")
+summary(adf_prod)
+
+# CPI
+ggplot(im, aes(x = index, y = log_CPI)) +
+    geom_line() +
+    labs(title = "log CPI", x = "time index", y = "log CPI") +
+    theme_bw()
+adf_CPI<- ur.df(final_dm$log_CPI, type = "trend", lags = 24, 
+                 selectlags = "AIC")
+print("log CPI")
+summary(adf_CPI)
+
+# # unemployment
+# ggplot(im, aes(x = index, y = diff_unempl)) +
+#     geom_line() +
+#     labs(title = "unemployment rate (1st diff.)", x = "time index", 
+#          y = "unemployment") +
+#     theme_bw()
+# adf_unempl<- ur.df(final_dm$diff_unempl, type = "trend", lags = 24, 
+#                  selectlags = "AIC")
+# print("unemployment rate (1st diff.)")
+# summary(adf_unempl)
+
+# cumulative shocks
+ggplot(im, aes(x = index, y = cum_shocks)) +
+    geom_line() +
+    labs(title = "cumulative monetary shocks", x = "time index", 
+         y = "total no. shocks") +
+    theme_bw()
+adf_shocks<- ur.df(final_dm$cum_shocks, type = "trend", lags = 24, 
+                 selectlags = "AIC")
+print("cumulative monetary shocks")
+summary(adf_shocks)
 ```
+From the tests we conclude that the variables are unlikely to have a unit root if a drift and trend are present.
+A visual inspection of the first difference of the unemployment rate still looks as if there might be heatwaves present. Generally speaking, the use of a VAR-MGARCH might be advisable. However, for the purpose of this assignment, we will assume the possibly heatwave-like behaviour to be a statistical artefact.  
+
+```{r}
+# is that a realistic number? Shouldn't it be -1 for every observation?
+VAR_1<- VAR(y = final_dm, type = "both", lag.max = 24, season = 12, ic = "AIC")
+summary(VAR_1)
+```
+*2. Determine the appropriate lag length of the VAR using standard tests or model selection criteria. Alternatively, determine the lag length consistent with the sampling frequency of the data. Explain your choices in both cases.*
+The function above automatically chose three lags based on Akaike's information criterion. In the following, we dive more into the model selection.
+```{r}
+VAR_1_selection<- VARselect(y = final_dm, type = "both", lag.max = 24, 
+                            season = 12)
+print(VAR_1_selection)
+```
+The model was tested for up to 24 lags. From the table of information criteria, evaluated for different lags, it can be seen that the selection above optimises the information criteria. AIC and FPE (a close relative to the AIC) suggest to use thirteen lags, the Hannan-Quinn and the Schwartz (BIC) information criteria recommend the use of two lags. No information criterion beats all other criteria in all circumstances. The great divergence of lag choice between the information criteria is concerning. Therefore, we conduct an out-of-sample experiment on an expanding window using 20% of the data upwards. The loss function is mean squared error, in line with the loss function for the VAR process.
+```{r}
+lags<- seq(1, 24)
+n_train<- seq(ceiling(nrow(final_dm / 5)), nrow(final_dm) - 1)
+
+
+oos_error<- numeric(length(lags))
+
+oos_pred_fun<- function(lag, n){
+  df_train<- final_dm[seq(1, n),]
+
+  model<- VAR(df_train, p = lag, type = "trend", season = 12)
+  forecast_list<- predict(model, n.ahead = 1)$fcst
+  forecast_vec<- numeric(ncol(df_train))
+  for(i in seq_along(forecast_vec)){
+    forecast_vec[i]<- forecast_list[[i]][1]
+  }
+  out<- forecast_vec
+  return(out)
+}
+
+for(l in seq_along(lags)){
+  oos_pred_df<- matrix(NA, ncol = ncol(final_dm), nrow = nrow(final_dm))|>
+    as.data.frame()
+  for(row in n_train){
+    oos_pred_df[row, ]<- oos_pred_fun(lag = lags[l], n = row)
+  }
+  sqError_df<- (oos_pred_df - final_dm)^2|>
+    drop_na()
+  oos_error[l]<- mean(unlist(sqError_df))
+}
+paste("The number of lags that minimises the estimated out-of-sample loss is a maximal lag number of", which.min(oos_error))
+loss_df<- data.frame(lag = lags, loss = oos_error)
+ggplot(loss_df, aes(x = lag, y = loss)) +
+  geom_line() +
+  labs(title = "Mean Squared Forecast Erros by Number of Lags", x = "no. lags",
+       y = "MSFE") +
+  theme_bw()
+```
+The loss minimising maximum number of lags is 1. We note that until lag 11, it makes little difference which lag number is chosen in terms of estimated out-of-sample error.
+
+*3. Estimate the three-variable reduced form VAR. Check the residuals of the equations after estimation for autocorrelation, using standard tests. Possibly go back to 2. and change the lag length.*
+```{r}
+VAR_2<- VAR(y = final_dm, type = "both", lag.max = 1, season = 12)
+summary(VAR_2)
+
+serial.test(VAR_2, lags.bg = 12, type = "BG")
+
+acf(VAR_2$varresult$difflog_prod$residuals, lag.max = 12, type = "correlation")
+acf(VAR_2$varresult$log_CPI$residuals, lag.max = 12, type = "correlation")
+acf(VAR_2$varresult$cum_shocks$residuals, lag.max = 12, type = "correlation")
+
+pacf(VAR_2$varresult$difflog_prod$residuals, lag.max = 12)
+pacf(VAR_2$varresult$log_CPI$residuals, lag.max = 12)
+pacf(VAR_2$varresult$cum_shocks$residuals, lag.max = 12)
+```
+The Breusch-Godfrey test rejects the notion that the residuals are not autocorrelated, and the (partial) autocorrelation plots confirm this observation. What is to be done about this? It depends very much on the researcher's attitude and goal. The MSFE minimising model (lag = 1) should be the go-to model as it is the model with the highest explanatory power. However, there might be more information in the lags that may be used for forecasting. From the (partial) autocorrelation plots it can be gleaned that there might be additional information in the second lack of the productivity index and in the first four lags of the cumulated shocks.
+Note that the cumulated shocks are a problematic variable for any stationary VAR:
+"We are asked to estimate VARs including the cumulative sum of shocks... A cumulative series, however, behaves monotonically. This is a violation of the necessary stationarity assumption." (Email from Raphael Kroes to Malte Rieth on January 10th, "PhD Homework: Question About Non-stationarity")
+In the following, we will stick with the MSFE minimising maximum lag order. There might be better ways to specify the model than the model specification thus chosen, however this takes a deeper understanding of the data generation process behind these variables.
+```{r}
+restr_mat<- diag(3)
+restr_mat[c(2, 3, 6)]<- NA
+VAR_3<- SVAR(VAR_2, estmethod = "direct", Amat = restr_mat)
+summary(VAR_3)
+```
+```{r}
+irf(VAR_2, n.ahead = 12, impulse = "cum_shocks")|>
+  plot()
+```
+```{r}
+irf(VAR_3, n.ahead = 12, impulse = "cum_shocks")|>
+  plot()
+```
+Independent of whether we impose restrictions on the estimation of our model or not, the patterns we observe do not change: The monetary shock slowly dissipates over time. The CPI increases over time - this is in line with standard monetary policy. However, the first difference of the log production index decreases. The first difference of the log production index (i.e. the log of the month-over-month growth rate) however goes down and slowly recovers. This is contrary to economic intuition: A monetary shock should lead to increased productivity, should it not? There are several possible explanations. For starters, none of the effects are significant (except for the monetary shock which was set to be equal to 1). Then we must also consider that the chosen model is extremely parsimonious, only using one lag. It is therefore impossible for the model to display 'wiggly' behaviour by design. The model is optimised to forecast the next period's outcome. For horizons longer than one period this model is not suitable. But why is a monetary shock associated with decreasing industrial growth rates? The keyword of the last sentence is 'associated': The model shows correlations, not causal effects. The ECB induces monetary shocks when the production goes down to counteract it. 
+
 
